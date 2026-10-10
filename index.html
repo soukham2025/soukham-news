@@ -65,5 +65,118 @@ document.getElementById('newsForm').addEventListener('submit',async e=>{e.preven
 document.getElementById('clearBtn').addEventListener('click',()=>{if(confirm('আপুনি যোগ কৰা সকলো ডেমো পোষ্ট মচিবনে?')){posts=[];localStorage.removeItem(KEY);render()}});
 document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x===b));render()}));
 document.getElementById('today').textContent=new Date().toLocaleDateString('as-IN',{weekday:'long',year:'numeric',month:'long',day:'numeric'});document.getElementById('year').textContent=new Date().getFullYear();render();
+</script><!-- Soukham News: Firestore live-news connection -->
+<!-- Add this script immediately BEFORE the closing </body> tag in index.html. -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+(() => {
+  const firebaseConfig = {
+    apiKey: "AIzaSyDYNjFI2NTyK1q4K9_TlFb3z7-3rdBynZY",
+    authDomain: "soukham-news.firebaseapp.com",
+    projectId: "soukham-news",
+    messagingSenderId: "893284902586",
+    appId: "1:893284902586:web:768e098455d811b4960483"
+  };
+
+  const cards = document.getElementById("cards");
+  const count = document.getElementById("count");
+  if (!cards) return;
+
+  // Keep the existing site layout and category buttons.
+  let allNews = [];
+  let activeFilter = "সকলো";
+
+  const esc = (value) => String(value ?? "").replace(/[&<>"']/g, ch => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+  }[ch]));
+
+  function videoEmbed(url) {
+    try {
+      const u = new URL(url);
+      if (u.hostname.includes("youtube.com")) {
+        const id = u.searchParams.get("v") || u.pathname.split("/").filter(Boolean).pop();
+        return id ? "https://www.youtube-nocookie.com/embed/" + encodeURIComponent(id) : "";
+      }
+      if (u.hostname === "youtu.be") {
+        return "https://www.youtube-nocookie.com/embed/" + encodeURIComponent(u.pathname.slice(1));
+      }
+    } catch (_) {}
+    return "";
+  }
+
+  function renderNews() {
+    const filtered = activeFilter === "সকলো"
+      ? allNews
+      : allNews.filter(n => String(n.category || "লিখিত বাতৰি") === activeFilter);
+
+    count.textContent = filtered.length + "টা";
+    if (!filtered.length) {
+      cards.innerHTML = '<div class="empty">এতিয়ালৈকে কোনো বাতৰি প্ৰকাশ কৰা হোৱা নাই।</div>';
+      return;
+    }
+
+    cards.innerHTML = filtered.map(n => {
+      const title = esc(n.title || "শিৰোনাম নাই");
+      const category = esc(n.category || "লিখিত বাতৰি");
+      const summary = esc(n.summary || n.body || "");
+      const date = esc(n.date || (n.createdAt && n.createdAt.toDate
+        ? n.createdAt.toDate().toLocaleDateString("as-IN")
+        : ""));
+      const image = String(n.imageUrl || "").trim();
+      const media = String(n.mediaUrl || "").trim();
+      const embed = videoEmbed(media);
+      let visual = "";
+      if (embed) {
+        visual = '<iframe class="news-video" src="' + esc(embed) +
+          '" title="' + title + '" loading="lazy" allowfullscreen></iframe>';
+      } else if (image) {
+        visual = '<img src="' + esc(image) + '" alt="' + title +
+          '" loading="lazy" onerror="this.style.display=\'none\'">';
+      } else if (media && /\.(mp4|webm|ogg)(\?.*)?$/i.test(media)) {
+        visual = '<video controls preload="metadata" src="' + esc(media) + '"></video>';
+      } else {
+        visual = '<div class="placeholder">📰</div>';
+      }
+      return '<article class="card">' + visual +
+        '<div class="cardbody"><div class="category">' + category +
+        '</div><h3>' + title + '</h3><p>' + summary +
+        '</p><div class="meta"><span>চৌখাম</span><span>' + date +
+        '</span></div></div></article>';
+    }).join("");
+  }
+
+  // Category buttons already present in the website.
+  document.querySelectorAll("#nav button[data-filter]").forEach(button => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll("#nav button").forEach(b => b.classList.remove("active"));
+      button.classList.add("active");
+      activeFilter = button.dataset.filter || "সকলো";
+      const title = document.getElementById("listTitle");
+      if (title) title.textContent = activeFilter === "সকলো" ? "সকলো প্ৰকাশনা" : activeFilter;
+      renderNews();
+    });
+  });
+
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    firebase.firestore().collection("news")
+      .onSnapshot(snapshot => {
+        allNews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        allNews.sort((a, b) => {
+          const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+          const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+          return tb - ta;
+        });
+        renderNews();
+      }, error => {
+        console.error("Soukham Firestore read error:", error);
+        cards.innerHTML = '<div class="empty">বাতৰি ল’ব পৰা নগ’ল। Firebase-ৰ Firestore rules আৰু collection "news" পৰীক্ষা কৰক।</div>';
+      });
+  } catch (error) {
+    console.error("Soukham Firebase setup error:", error);
+    cards.innerHTML = '<div class="empty">Firebase সংযোগ আৰম্ভ কৰিব পৰা নগ’ল।</div>';
+  }
+})();
 </script>
 </body></html>
